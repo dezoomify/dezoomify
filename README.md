@@ -35,8 +35,6 @@ sensitive addresses before sharing.
 ## Build and contribute
 
 Install Rust and the Node.js version in [`.node-version`](.node-version).
-Native x86-64 builds need NASM 2.15 or newer for AVIF SIMD
-(`apt install nasm`, `brew install nasm`, or `choco install nasm`).
 
 ```sh
 cargo xtask setup

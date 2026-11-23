@@ -12,14 +12,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
     println!("rustc: {rustc}");
     let cargo = version_of("cargo", &["--version"])?;
     println!("cargo: {cargo}");
-    if cfg!(target_arch = "x86_64") {
-        match version_of("nasm", &["-v"]) {
-            Ok(version) => println!("nasm: {version}"),
-            Err(error) => failures.push(format!(
-                "{error} (install NASM for native AVIF; see README.md#build-and-contribute)"
-            )),
-        }
-    }
     if let Err(e) = check_node() {
         failures.push(e);
     }

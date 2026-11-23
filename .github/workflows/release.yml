@@ -93,6 +93,7 @@ jobs:
         with:
           key: ${{ matrix.cache }}
           desktop: ${{ startsWith(matrix.target, 'desktop-') }}
+          release: ${{ startsWith(matrix.target, 'cli-') || startsWith(matrix.target, 'desktop-') }}
       - uses: ./.github/actions/setup-wasm-bindgen
       - name: Download plan
         env:

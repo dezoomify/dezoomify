@@ -28,6 +28,7 @@ jobs:
       - uses: ./.github/actions/setup-build
         with:
           key: cli-release
+          release: true
       - name: Build and exercise the release archive
         shell: pwsh
         run: |

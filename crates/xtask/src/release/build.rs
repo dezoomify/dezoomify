@@ -6,6 +6,8 @@ use super::common::{expected_artifact_name, git_commit, plan_dir, read_plan, sta
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const NATIVE_RELEASE_FEATURE: &str = "dezoomify-native/release-performance";
+
 pub(crate) fn build_cmd(args: &[String]) -> Result<(), String> {
     let (plan, target) = stage_args(args, "build", "--target")?;
     let built = release_build(&read_plan(plan)?, target)?;
@@ -66,7 +68,15 @@ fn build_cli_artifact(target_os: &str, out: &Path) -> Result<(), String> {
     ) {
         return Err(format!("CLI target must be built on a {target_os} host"));
     }
-    run_cmd(&["cargo", "build", "--release", "-p", "dezoomify-cli"])?;
+    run_cmd(&[
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "dezoomify-cli",
+        "--features",
+        NATIVE_RELEASE_FEATURE,
+    ])?;
     let name = if target_os == "windows" {
         "dezoomify-cli.exe"
     } else {
@@ -119,7 +129,7 @@ fn build_desktop_artifact(target: &str, target_os: &str, out: &Path) -> Result<(
     {
         return Err("desktop releases require the TAURI_SIGNING_PRIVATE_KEY Actions secret".into());
     }
-    crate::desktop::build_desktop(&[])?;
+    crate::desktop::build_desktop_with_bundle_features(&[], &[NATIVE_RELEASE_FEATURE])?;
     let (subdir, extension, arch_token): (&str, &str, Option<&str>) = match target {
         "desktop-linux-x86_64" => ("deb", "deb", None),
         "desktop-windows-x86_64" => ("nsis", "exe", None),
