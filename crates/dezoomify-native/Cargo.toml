@@ -6,6 +6,9 @@ license = "GPL-3.0-or-later"
 description = "Native Host shared by the CLI and desktop app."
 repository = "https://github.com/dezoomify/dezoomify"
 
+[features]
+release-performance = ["image/nasm"]
+
 [dependencies]
 dezoomify = { path = "../dezoomify" }
 serde.workspace = true
@@ -19,8 +22,7 @@ webpki-roots = "1"
 url.workspace = true
 sha2.workspace = true
 sysinfo.workspace = true
-# AVIF needs both features for parallelism and SIMD; release optimization alone is insufficient.
-image = { workspace = true, features = ["tiff", "webp", "avif", "rayon", "nasm"] }
+image = { workspace = true, features = ["tiff", "webp", "avif", "rayon"] }
 tiff = "0.11"
 scraper = { version = "0.29", default-features = false }
 tempfile = "3.27"

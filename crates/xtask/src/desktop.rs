@@ -37,6 +37,13 @@ const WEBKIT_SYSTEM_PACKAGES: &str =
     "libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev build-essential";
 
 pub fn build_desktop(args: &[String]) -> Result<(), String> {
+    build_desktop_with_bundle_features(args, &[])
+}
+
+pub(crate) fn build_desktop_with_bundle_features(
+    args: &[String],
+    bundle_features: &[&str],
+) -> Result<(), String> {
     for arg in args {
         if arg != "--unsigned-test" {
             return Err(format!(
@@ -75,7 +82,7 @@ pub fn build_desktop(args: &[String]) -> Result<(), String> {
             println!("build desktop --unsigned-test: ok (no bundle produced)");
             return Ok(());
         }
-        bundle()
+        bundle(bundle_features)
     } else {
         println!(
             "build desktop: window shell skipped; install the webview system packages to enable it ({WEBKIT_SYSTEM_PACKAGES})"
@@ -846,7 +853,7 @@ fn resolve_windows_program(
     None
 }
 
-fn bundle() -> Result<(), String> {
+fn bundle(extra_features: &[&str]) -> Result<(), String> {
     check_bundle_prereqs()?;
     let targets = bundle_targets();
     if targets.is_empty() {
@@ -868,6 +875,9 @@ fn bundle() -> Result<(), String> {
             return Err(format!("icon generation produced no {}", path.display()));
         }
     }
+    let mut features = vec!["tauri"];
+    features.extend_from_slice(extra_features);
+    let features = features.join(",");
     let mut pnpm_args = vec![
         "--filter",
         "./apps/desktop",
@@ -875,7 +885,7 @@ fn bundle() -> Result<(), String> {
         "tauri",
         "build",
         "--features",
-        "tauri",
+        &features,
         "--bundles",
     ];
     pnpm_args.extend(targets.iter().copied());
