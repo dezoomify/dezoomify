@@ -83,7 +83,7 @@ fn iiif_probe_falls_back_to_caret_size_and_preserves_probe_tile() {
         .unwrap();
     let probes = host.probes.borrow();
     assert!(resource_uri(&probes[0].source).ends_with("/256,256/0/default.jpg"));
-    assert!(resource_uri(&probes[1].source).ends_with("/^256,/0/default.jpg"));
+    assert!(resource_uri(&probes[1].source).ends_with("/%5E256,/0/default.jpg"));
     assert_eq!(resolved.previously_output, [Vec2d::default()]);
     assert_eq!(
         grid_tile_uri(&resolved.grid, 0),
