@@ -4,8 +4,8 @@ import { suggestedNameFor } from "../../shared-ui/src/labels.ts";
 import {
   BROWSER_SAVE_COLOR_WARNING,
   canvasToPngBlob,
+  createManualSave,
   isCanvasTaintError,
-  saveBlobViaAnchor,
 } from "../src/canvas-save.ts";
 
 test("canvasToPngBlob resolves the encoded blob", async () => {
@@ -78,7 +78,7 @@ test("canvasToPngBlob preserves a taint SecurityError for display-only fallback"
   assert.equal(isCanvasTaintError(taint), true);
 });
 
-test("saveBlobViaAnchor uses the prepared filename and removes its temporary anchor", () => {
+test("manual save waits for a click, uses the prepared filename, and releases the file", async (t) => {
   for (const [title, expectedName] of [
     ["An image", "An image.png"],
     [undefined, "dezoomify-800x600.png"],
@@ -106,10 +106,21 @@ test("saveBlobViaAnchor uses the prepared filename and removes its temporary anc
         },
       },
     };
-    saveBlobViaAnchor(doc, "blob:abc", suggestedNameFor(800, 600, "png", title));
-    assert.equal(anchor.href, "blob:abc");
+    const manual = createManualSave(doc);
+    t.after(manual.dispose);
+    const disposition = manual.prepare(
+      new Blob(["png"]),
+      suggestedNameFor(800, 600, "png", title),
+      new AbortController().signal,
+    );
+    assert.equal(disposition, "browser-save-ready");
+    assert.deepEqual(events, []);
+    manual.saveOutput();
+    assert.equal(await (await fetch(anchor.href)).text(), "png");
     assert.equal(anchor.download, expectedName);
     assert.deepEqual(events, ["append", "click", "remove"]);
+    manual.dispose();
+    await assert.rejects(fetch(anchor.href), TypeError);
   }
 });
 

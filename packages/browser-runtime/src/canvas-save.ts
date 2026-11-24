@@ -60,13 +60,29 @@ export function canvasToPngBlob(canvas: CanvasLike, signal?: AbortSignal): Promi
   });
 }
 
-/** The caller retains ownership of blobUrl. Clicking starts a browser download
- * but supplies no saved-file confirmation; keep it available for later saves. */
-export function saveBlobViaAnchor(doc: DocumentLike, blobUrl: string, filename: string): void {
-  const anchor = doc.createElement("a");
-  anchor.href = blobUrl;
-  anchor.download = filename;
-  doc.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+/** Retain the prepared file until the job is retired so users can retry saving. */
+export function createManualSave(doc: DocumentLike) {
+  let file: { url: string; filename: string } | undefined;
+  function dispose() {
+    if (file) URL.revokeObjectURL(file.url);
+    file = undefined;
+  }
+  return {
+    prepare(blob: Blob, filename: string, signal: AbortSignal) {
+      signal.throwIfAborted();
+      dispose();
+      file = { url: URL.createObjectURL(blob), filename };
+      return "browser-save-ready" as const;
+    },
+    saveOutput() {
+      if (!file) return;
+      const anchor = doc.createElement("a");
+      anchor.href = file.url;
+      anchor.download = file.filename;
+      doc.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    },
+    dispose,
+  };
 }

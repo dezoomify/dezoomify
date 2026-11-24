@@ -77,9 +77,8 @@ export interface BrowserCapabilities
   recoverDiscovery?(error: JobError): Promise<Completion | undefined>;
   canvas(): HTMLCanvasElement;
   showCanvas?(canvas: HTMLCanvasElement): void;
-  /** Keep the Blob alive until saving settles. Website saves return save-ready
-   * while awaiting a click; extension saves return save-initiated only after
-   * download-manager confirmation. */
+  /** Return save-ready when awaiting a user click, or save-initiated after
+   * download-manager confirmation. Retain the Blob until the consumer is done. */
   save(
     blob: Blob,
     width: number,

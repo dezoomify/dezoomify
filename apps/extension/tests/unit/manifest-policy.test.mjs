@@ -57,6 +57,7 @@ test("WXT emits Firefox's required classic MV3 background script", () => {
     "{14074c89-8a5f-4813-98df-a7117f062871}",
   );
   assert.equal(value.browser_specific_settings?.gecko?.strict_min_version, "133.0");
+  assert.deepEqual(value.browser_specific_settings?.gecko_android, { strict_min_version: "133.0" });
   assert.equal(value.message_serialization, undefined);
   const background = new URL("background.js", output("firefox"));
   const parsed = spawnSync(process.execPath, ["--check", fileURLToPath(background)], {

@@ -10,19 +10,22 @@ you are signed in. For images beyond browser size limits, use the
 
 Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/dezoomify/iapjjopjejpelnfdonefbffahmcndfbm)
 (Chrome, Edge, Brave, and other Chromium browsers) or
-[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/dezoomify/).
-Pin Dezoomify through the browser's extension menu if its icon is hidden.
+[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/dezoomify/)
+(Firefox for desktop and Android). On desktop, pin Dezoomify through the browser's
+extension menu if its icon is hidden.
 
 ## Save an image
 
 1. Open the image's viewing page, sign in if needed, and let the viewer load.
    Zoom in once to ensure its image resources have loaded before starting.
 2. Click Dezoomify in the browser toolbar. A dedicated job tab opens and starts
-   automatically. The source page is not reloaded.
+   automatically. On Firefox for Android, open **⋮ → Extensions → Dezoomify**
+   from the viewing page. The source page is not reloaded.
 3. If the job asks for access to another site hosting the viewer, image, or tiles, approve
    that visible request to continue.
-4. Leave the job tab open until the browser confirms saving. Then choose
-   **Open image** or **Show in folder**.
+4. On Firefox for Android, tap **Save image now** when the image is ready, then
+   look in Firefox’s **Downloads** menu. On desktop, leave the job tab open until
+   the browser confirms saving. Then choose **Open image** or **Show in folder**.
 
 The extension selects the largest image and resolution that fit in a browser
 tab. If it saves a smaller resolution, it shows both sizes and offers the desktop
@@ -39,7 +42,7 @@ with discovered data it can fetch without that document's session.
 Use the browser's normal **Save image as** when it already gives you the complete
 artwork. Use Dezoomify when zooming stays sharp and the viewer loads many pieces.
 
-If tiled discovery finds no source, the extension can download a large image
+On desktop, if tiled discovery finds no source, the extension can download a large image
 already loaded on the page directly from its URL. The site may offer a
 larger version. Page-created blob URLs are not supported by this fallback.
 If no large image is loaded, it can also use an unambiguous image download link.

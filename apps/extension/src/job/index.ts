@@ -1,5 +1,6 @@
 import {
   createAttemptPermissions,
+  createManualSave,
   DezoomifyError,
   InternalError,
   loadTileImage,
@@ -25,6 +26,10 @@ setLocale(pickLocale(navigator.languages?.length ? navigator.languages : navigat
 document.documentElement.lang = getLocale();
 
 const TESTING = import.meta.env.MODE === "testing";
+const manualSave =
+  (TESTING && import.meta.env.VITE_DEZOOMIFY_TEST_MANUAL_SAVE === "1") ||
+  (import.meta.env.FIREFOX && (await api.runtime.getPlatformInfo()).os === "android");
+const downloads = manualSave ? undefined : api.downloads;
 const sourceTabParam = new URLSearchParams(location.hash.slice(1)).get("sourceTabId");
 const parsedId =
   sourceTabParam !== null && /^\d+$/.test(sourceTabParam) ? Number(sourceTabParam) : -1;
@@ -50,10 +55,10 @@ function syncIndicator(active: boolean, failed: boolean) {
   if (sourceTabId === null || indicator === `${active}:${failed}`) return;
   indicator = `${active}:${failed}`;
   void api.action
-    .setIcon({ tabId: sourceTabId, path: active || failed ? ACTIVE_ICON : IDLE_ICON })
+    .setIcon?.({ tabId: sourceTabId, path: active || failed ? ACTIVE_ICON : IDLE_ICON })
     .catch(() => {});
   void api.action
-    .setBadgeText({ tabId: sourceTabId, text: failed ? "!" : active ? "•" : "" })
+    .setBadgeText?.({ tabId: sourceTabId, text: failed ? "!" : active ? "•" : "" })
     .catch(() => {});
 }
 
@@ -95,8 +100,10 @@ const app = createBrowserApplication({
       hasPermission: (origin) => permissionApi.contains({ origins: [`${origin}/*`] }),
     });
     let downloadId: number | undefined;
+    const manual = createManualSave(document);
     let fetchResource: ReturnType<typeof createResourceFetcher> | undefined;
     let observe: ReturnType<ReturnType<typeof createSourceAccess>["observations"]> | undefined;
+
     return {
       async inputs() {
         if (!source) {
@@ -190,14 +197,17 @@ const app = createBrowserApplication({
         return fetchResource.preview(request, signal);
       },
       async recoverDiscovery(error) {
-        if (!["discovery-failed", "malformed-metadata", "no-image-found"].includes(error.kind))
+        if (
+          !downloads ||
+          !["discovery-failed", "malformed-metadata", "no-image-found"].includes(error.kind)
+        )
           return undefined;
         const image = await source?.loadedImage(context.signal);
         const url = image?.url ?? (await source?.imageDownloadLink(context.signal));
         if (!url) return undefined;
         context.diagnostics.record("warn", "discovery-fallback", error);
         context.diagnostics.record("info", "source-image", { url, ...image });
-        downloadId = await saveExtensionUrl(api.downloads, url, undefined, context.signal);
+        downloadId = await saveExtensionUrl(downloads, url, undefined, context.signal);
         context.view.outputKey = String(downloadId);
         context.view.discoveryFallback = error;
         return {
@@ -206,7 +216,10 @@ const app = createBrowserApplication({
         };
       },
       observe: (interaction, signal) => observe?.(interaction, signal) ?? Promise.resolve([]),
-      dispose: () => source?.releaseTiles(),
+      dispose() {
+        manual.dispose();
+        source?.releaseTiles();
+      },
       loadDisplayImage: (url, signal) => loadTileImage(url, { signal }),
       loadViewerTile: (request, extent, signal) => {
         if (!source)
@@ -217,12 +230,9 @@ const app = createBrowserApplication({
       },
       canvas: () => document.createElement("canvas"),
       async save(blob, width, height, signal, title) {
-        downloadId = await saveExtensionBlob(
-          api.downloads,
-          blob,
-          suggestedNameFor(width, height, "png", title),
-          signal,
-        );
+        const filename = suggestedNameFor(width, height, "png", title);
+        if (!downloads) return manual.prepare(blob, filename, signal);
+        downloadId = await saveExtensionBlob(downloads, blob, filename, signal);
         signal.throwIfAborted();
         context.view.outputKey = String(downloadId);
         context.diagnostics.record("info", "save-confirmed", {
@@ -233,12 +243,16 @@ const app = createBrowserApplication({
         });
         return "browser-save-initiated" as const;
       },
-      async openOutput() {
-        if (downloadId !== undefined) await api.downloads.open(downloadId);
-      },
-      async revealOutput() {
-        if (downloadId !== undefined) await api.downloads.show(downloadId);
-      },
+      ...(downloads
+        ? {
+            async openOutput() {
+              if (downloadId !== undefined) await downloads.open(downloadId);
+            },
+            async revealOutput() {
+              if (downloadId !== undefined) await downloads.show(downloadId);
+            },
+          }
+        : { saveOutput: manual.saveOutput }),
       transport: () => "browser-session",
     };
   },
