@@ -1,8 +1,30 @@
-import { outputError } from "@dezoomify/browser-runtime";
+import { outputError, saveBlobViaAnchor } from "@dezoomify/browser-runtime";
 import type { browser } from "wxt/browser";
 
 type Downloads = Pick<typeof browser.downloads, "download" | "search" | "cancel" | "onChanged">;
 type DownloadDelta = Parameters<Parameters<Downloads["onChanged"]["addListener"]>[0]>[0];
+
+/** Keep the prepared file available for a user-initiated save or retry until
+ * the job is retired. An anchor cannot confirm that the file was written. */
+export function createManualDownload(doc: Parameters<typeof saveBlobViaAnchor>[0]) {
+  let file: { url: string; filename: string } | undefined;
+  function dispose() {
+    if (file) URL.revokeObjectURL(file.url);
+    file = undefined;
+  }
+  return {
+    prepare(blob: Blob, filename: string, signal: AbortSignal) {
+      signal.throwIfAborted();
+      dispose();
+      file = { url: URL.createObjectURL(blob), filename };
+      return "browser-save-ready" as const;
+    },
+    save() {
+      if (file) saveBlobViaAnchor(doc, file.url, file.filename);
+    },
+    dispose,
+  };
+}
 
 /** Retain the Blob URL until the download manager reports a terminal state or
  * finishes cancellation. Resolving earlier can revoke bytes still being read. */

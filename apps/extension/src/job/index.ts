@@ -4,6 +4,7 @@ import {
   InternalError,
   loadTileImage,
   originOfUrl,
+  outputError,
   PolicyDeniedError,
 } from "@dezoomify/browser-runtime";
 import { createBrowserApplication } from "@dezoomify/browser-runtime/application";
@@ -14,10 +15,10 @@ import {
   setLocale,
   suggestedNameFor,
 } from "@dezoomify/shared-ui";
-import type { ResourceRead } from "@dezoomify/wasm-bindings";
+import type { OutputDisposition, ResourceRead } from "@dezoomify/wasm-bindings";
 import { browser as api } from "wxt/browser";
 import { createExtensionFetcher } from "../runtime/fetch.ts";
-import { saveExtensionBlob, saveExtensionUrl } from "./download.ts";
+import { createManualDownload, saveExtensionBlob, saveExtensionUrl } from "./download.ts";
 import { createSourceAccess } from "./source-access.ts";
 import { createResourceFetcher } from "./transport.ts";
 
@@ -25,6 +26,10 @@ setLocale(pickLocale(navigator.languages?.length ? navigator.languages : navigat
 document.documentElement.lang = getLocale();
 
 const TESTING = import.meta.env.MODE === "testing";
+const manualSave =
+  (TESTING && import.meta.env.VITE_DEZOOMIFY_TEST_MANUAL_SAVE === "1") ||
+  (import.meta.env.FIREFOX && (await api.runtime.getPlatformInfo()).os === "android");
+const downloads = manualSave ? undefined : api.downloads;
 const sourceTabParam = new URLSearchParams(location.hash.slice(1)).get("sourceTabId");
 const parsedId =
   sourceTabParam !== null && /^\d+$/.test(sourceTabParam) ? Number(sourceTabParam) : -1;
@@ -50,10 +55,10 @@ function syncIndicator(active: boolean, failed: boolean) {
   if (sourceTabId === null || indicator === `${active}:${failed}`) return;
   indicator = `${active}:${failed}`;
   void api.action
-    .setIcon({ tabId: sourceTabId, path: active || failed ? ACTIVE_ICON : IDLE_ICON })
+    .setIcon?.({ tabId: sourceTabId, path: active || failed ? ACTIVE_ICON : IDLE_ICON })
     .catch(() => {});
   void api.action
-    .setBadgeText({ tabId: sourceTabId, text: failed ? "!" : active ? "•" : "" })
+    .setBadgeText?.({ tabId: sourceTabId, text: failed ? "!" : active ? "•" : "" })
     .catch(() => {});
 }
 
@@ -95,8 +100,25 @@ const app = createBrowserApplication({
       hasPermission: (origin) => permissionApi.contains({ origins: [`${origin}/*`] }),
     });
     let downloadId: number | undefined;
+    const manual = createManualDownload(document);
     let fetchResource: ReturnType<typeof createResourceFetcher> | undefined;
     let observe: ReturnType<ReturnType<typeof createSourceAccess>["observations"]> | undefined;
+
+    async function prepareOriginal(url: string) {
+      const { signal } = context;
+      if (url.startsWith("data:")) {
+        const blob = await (await fetch(url, { signal })).blob();
+        return manual.prepare(blob, "", signal);
+      }
+      // Cross-origin download links can navigate rather than save. Read the
+      // bytes through the normal session and permission checks instead.
+      const result = await fetchResource?.({ uri: url, purpose: "tile" }, signal, "allowed", true);
+      if (result?.kind !== "response")
+        throw outputError("write-failed", "could not read the original image");
+      const blob = new Blob([new Uint8Array(result.response.bytes)]);
+      return manual.prepare(blob, new URL(url).pathname.split("/").pop() || "image", signal);
+    }
+
     return {
       async inputs() {
         if (!source) {
@@ -197,16 +219,22 @@ const app = createBrowserApplication({
         if (!url) return undefined;
         context.diagnostics.record("warn", "discovery-fallback", error);
         context.diagnostics.record("info", "source-image", { url, ...image });
-        downloadId = await saveExtensionUrl(api.downloads, url, undefined, context.signal);
-        context.view.outputKey = String(downloadId);
+        let disposition: OutputDisposition = "browser-save-initiated";
+        if (downloads) {
+          downloadId = await saveExtensionUrl(downloads, url, undefined, context.signal);
+          context.view.outputKey = String(downloadId);
+        } else disposition = await prepareOriginal(url);
         context.view.discoveryFallback = error;
         return {
           canvas: image ? { width: image.width, height: image.height } : undefined,
-          disposition: "browser-save-initiated",
+          disposition,
         };
       },
       observe: (interaction, signal) => observe?.(interaction, signal) ?? Promise.resolve([]),
-      dispose: () => source?.releaseTiles(),
+      dispose() {
+        manual.dispose();
+        source?.releaseTiles();
+      },
       loadDisplayImage: (url, signal) => loadTileImage(url, { signal }),
       loadViewerTile: (request, extent, signal) => {
         if (!source)
@@ -217,12 +245,9 @@ const app = createBrowserApplication({
       },
       canvas: () => document.createElement("canvas"),
       async save(blob, width, height, signal, title) {
-        downloadId = await saveExtensionBlob(
-          api.downloads,
-          blob,
-          suggestedNameFor(width, height, "png", title),
-          signal,
-        );
+        const filename = suggestedNameFor(width, height, "png", title);
+        if (!downloads) return manual.prepare(blob, filename, signal);
+        downloadId = await saveExtensionBlob(downloads, blob, filename, signal);
         signal.throwIfAborted();
         context.view.outputKey = String(downloadId);
         context.diagnostics.record("info", "save-confirmed", {
@@ -233,12 +258,16 @@ const app = createBrowserApplication({
         });
         return "browser-save-initiated" as const;
       },
-      async openOutput() {
-        if (downloadId !== undefined) await api.downloads.open(downloadId);
-      },
-      async revealOutput() {
-        if (downloadId !== undefined) await api.downloads.show(downloadId);
-      },
+      ...(downloads
+        ? {
+            async openOutput() {
+              if (downloadId !== undefined) await downloads.open(downloadId);
+            },
+            async revealOutput() {
+              if (downloadId !== undefined) await downloads.show(downloadId);
+            },
+          }
+        : { saveOutput: manual.save }),
       transport: () => "browser-session",
     };
   },
