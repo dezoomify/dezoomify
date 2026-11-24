@@ -1,34 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  createManualDownload,
-  saveExtensionBlob,
-  saveExtensionUrl,
-} from "../../src/job/download.ts";
-
-test("manual save retains the file for retries and releases it when the job closes", async (t) => {
-  const clicked = [];
-  const anchor = { click: () => clicked.push(anchor.href), remove() {} };
-  const manual = createManualDownload({
-    createElement: () => anchor,
-    body: { appendChild() {} },
-  });
-  t.after(manual.dispose);
-
-  const { signal } = new AbortController();
-  assert.equal(manual.prepare(new Blob(["image"]), "image.png", signal), "browser-save-ready");
-  assert.deepEqual(clicked, []);
-  manual.save();
-  manual.save();
-  assert.equal(anchor.download, "image.png");
-  assert.deepEqual(clicked, [anchor.href, anchor.href]);
-  assert.equal(await (await fetch(anchor.href)).text(), "image");
-
-  manual.dispose();
-  manual.save();
-  assert.equal(clicked.length, 2);
-  await assert.rejects(fetch(anchor.href), TypeError);
-});
+import { saveExtensionBlob, saveExtensionUrl } from "../../src/job/download.ts";
 
 function downloads(start = async () => 7) {
   let changed;

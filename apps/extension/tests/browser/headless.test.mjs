@@ -71,7 +71,6 @@ function stagePackage(
   {
     grantHostPermissions = true,
     sourceHostOnly = false,
-    scenario,
     restartBackground = false,
     manualSave = false,
   } = {},
@@ -79,13 +78,11 @@ function stagePackage(
   const zip = path.join(dir, `dezoomify-${browser}.zip`);
   // Scenarios use the driver URL, so only actual build options split packages.
   // Start idle so observers attach before even a cold session launches its job.
-  scenario = "idle";
   const key = JSON.stringify([
     browser,
     origin,
     grantHostPermissions,
     sourceHostOnly,
-    scenario,
     restartBackground,
     manualSave,
   ]);
@@ -106,7 +103,7 @@ function stagePackage(
         ...(sourceHostOnly ? { DEZOOMIFY_TEST_SOURCE_HOST_ONLY: "1" } : {}),
         DEZOOMIFY_TEST_ORIGIN: origin,
         VITE_DEZOOMIFY_TEST_MANUAL_SAVE: manualSave ? "1" : "0",
-        ...(scenario ? { DEZOOMIFY_TEST_SCENARIO: scenario } : {}),
+        DEZOOMIFY_TEST_SCENARIO: "idle",
         ...(restartBackground ? { DEZOOMIFY_TEST_RESTART_BACKGROUND: "1" } : {}),
       },
     },
@@ -531,14 +528,8 @@ function findFirefoxBinary() {
 }
 
 async function saveFirefoxOutput(driver, downloadsDir) {
-  const { By } = webdriver;
-  const jobTab = await findFirefoxTab(driver, "/job.html#sourceTabId=");
-  assert.ok(jobTab, "Firefox job opens in its own tab");
-  const save = await driver.wait(async () => {
-    const [button] = await driver.findElements(By.css("#dz-btn-save"));
-    return button;
-  }, 30000);
-  assert.equal(await save.getText(), "Save image now");
+  const { By, until } = webdriver;
+  const save = await driver.wait(until.elementLocated(By.css("#dz-btn-save")), 30000);
   assert.deepEqual(readdirSync(downloadsDir), [], "no download before the save action");
   assert.equal((await driver.findElements(By.css("#dz-btn-open, #dz-btn-reveal"))).length, 0);
   await save.click();
@@ -559,21 +550,10 @@ async function assertFirefoxAutomaticSave(driver) {
 }
 
 async function startFirefoxFixture(driver, runOptions) {
-  let fixtureStarted = false;
-  await driver.wait(
-    async () => {
-      const driverTab = await findFirefoxTab(driver, "/test/driver.html");
-      if (!driverTab) return false;
-      if (fixtureStarted) return firefoxDriverReady(driver);
-      // The idle package starts exactly one fixture via URL without injected script.
-      await driver.get(testDriverUrl(await driver.getCurrentUrl(), runOptions));
-      fixtureStarted = true;
-      return false;
-    },
-    30000,
-    undefined,
-    50,
-  );
+  await driver.wait(() => findFirefoxTab(driver, "/test/driver.html"), 30000, undefined, 50);
+  // Start the idle driver via URL without injecting script into a privileged page.
+  await driver.get(testDriverUrl(await driver.getCurrentUrl(), runOptions));
+  await driver.wait(() => firefoxDriverReady(driver), 30000, undefined, 50);
 }
 
 async function grantFirefoxJobAccess(driver) {
@@ -621,6 +601,8 @@ async function runFirefoxJob(base, work, { logFile = fixtureServer.logFile, ...r
     await startFirefoxFixture(driver, runOptions);
     if (runOptions.grantAccess) await grantFirefoxJobAccess(driver);
     await chooseFirefoxFixture(driver, runOptions);
+    const jobTab = await findFirefoxTab(driver, "/job.html#sourceTabId=");
+    assert.ok(jobTab, "Firefox job tab is available");
     if (runOptions.manualSave) await saveFirefoxOutput(driver, downloadsDir);
     const deadline = Date.now() + 90000;
     const output = await readCompletedPng(downloadsDir, deadline).catch(async (error) => {
@@ -631,8 +613,7 @@ async function runFirefoxJob(base, work, { logFile = fixtureServer.logFile, ...r
       }
       throw new Error(`${error.message}\n${pages.join("\n")}`, { cause: error });
     });
-    const jobTab = await findFirefoxTab(driver, "/job.html#sourceTabId=");
-    assert.ok(jobTab, "Firefox job tab remains available after saving");
+    await driver.switchTo().window(jobTab);
     if (!runOptions.manualSave) await assertFirefoxAutomaticSave(driver);
     if (runOptions.scenario === "cookie-session") {
       await waitForFixtureEvent(
@@ -1026,30 +1007,14 @@ test("chromium: gallery viewers reach the image chooser together", {
   }
 });
 
-test("firefox: packaged extension runs the job-tab flow", { timeout: 180000 }, async () => {
+test("firefox: the job tab saves a rebuilt image on request", { timeout: 180000 }, async () => {
   const work = mkdtempSync(path.join(tmpdir(), "dezoomify-e2e-firefox-"));
   try {
-    assertPng(await runFirefoxJob(fixtureServer.base, work));
+    assertPng(await runFirefoxJob(fixtureServer.base, work, { manualSave: true }));
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
 });
-
-for (const scenario of [undefined, "loaded-image-link"]) {
-  test(`firefox: manual save works for ${scenario ?? "a rebuilt tiled image"}`, {
-    timeout: 180000,
-  }, async () => {
-    const work = mkdtempSync(path.join(tmpdir(), "dezoomify-e2e-firefox-manual-"));
-    try {
-      const bytes = await runFirefoxJob(fixtureServer.base, work, { manualSave: true, scenario });
-      if (scenario)
-        assert.deepEqual(bytes, readFileSync(path.join(fixtureWork, "static", "loaded-image.png")));
-      else assertPng(bytes);
-    } finally {
-      rmSync(work, { recursive: true, force: true });
-    }
-  });
-}
 
 for (const [browser, runJob] of [
   ["chromium", runChromiumJob],

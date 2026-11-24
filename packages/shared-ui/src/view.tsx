@@ -626,7 +626,7 @@ function CompletedView({
   const title = saved ? t("desktop.done.title") : t("view.done.readyTitle");
   const summary = completionSummary(presentation, saved);
   const showSaveButton = output?.disposition === "browser-save-ready" && !!callbacks.onSave;
-  const guidance = completionGuidance(saved, !!ctx?.discoveryFallback);
+  const guidance = saved ? t("desktop.done.saved") : renderSaveGuidance(true);
   return (
     <div className="dz-view-body dz-completed-section dz-fade-in">
       <div className="dz-completed-header">
@@ -648,11 +648,8 @@ function CompletedView({
           <p className="dz-completed-summary">{summary}</p>
         </div>
       </div>
-      {guidance.map((message) => (
-        <p key={message} className="dz-completed-guidance">
-          {message}
-        </p>
-      ))}
+      <p className="dz-completed-guidance">{guidance}</p>
+      {ctx?.discoveryFallback ? <p>{t("view.done.fallback")}</p> : null}
       <div className="dz-actions-row">
         {callbacks.onOpenOutput ? (
           <button
@@ -730,18 +727,13 @@ function CompletedView({
   );
 }
 
-function completionGuidance(saved: boolean, original: boolean): string[] {
-  if (!saved) return original ? [] : [renderSaveGuidance(true)];
-  return original ? [t("desktop.done.saved"), t("view.done.fallback")] : [t("desktop.done.saved")];
-}
-
 function completionSummary(presentation: Presentation, saved: boolean): string {
   const output = presentation.output;
   const canvas = output?.canvas;
   if (saved || !output?.format)
     return canvas
       ? t("desktop.done.size", { width: canvas.width, height: canvas.height })
-      : t(saved ? "desktop.done.saved" : "view.done.ready");
+      : t("desktop.done.saved");
   return canvas
     ? renderCompletion(canvas.width, canvas.height, `image/${output?.format}`)
     : t("view.done.ready");

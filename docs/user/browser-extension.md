@@ -42,7 +42,7 @@ with discovered data it can fetch without that document's session.
 Use the browser's normal **Save image as** when it already gives you the complete
 artwork. Use Dezoomify when zooming stays sharp and the viewer loads many pieces.
 
-If tiled discovery finds no source, the extension can download a large image
+On desktop, if tiled discovery finds no source, the extension can download a large image
 already loaded on the page directly from its URL. The site may offer a
 larger version. Page-created blob URLs are not supported by this fallback.
 If no large image is loaded, it can also use an unambiguous image download link.

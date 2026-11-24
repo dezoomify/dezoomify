@@ -1,9 +1,9 @@
 import {
+  createManualSave,
   createPreviewControls,
   createWebFetcher,
   isProxyEligible,
   loadTileImage,
-  saveBlobViaAnchor,
   setCanvasVisible,
 } from "@dezoomify/browser-runtime";
 import { createBrowserApplication } from "@dezoomify/browser-runtime/application";
@@ -101,8 +101,7 @@ const app = root
           isProxyEligible,
           hooks,
         });
-        let blobUrl: string | undefined;
-        let saveName: string | undefined;
+        const manual = createManualSave(document);
         return {
           inputs: async (url) => [{ url }],
           async fetchResource(request, signal) {
@@ -122,19 +121,11 @@ const app = root
             preview.resetTransform(document);
           },
           save(blob, width, height, signal, title) {
-            signal.throwIfAborted();
-            if (blobUrl) URL.revokeObjectURL(blobUrl);
-            blobUrl = URL.createObjectURL(blob);
-            saveName = suggestedNameFor(width, height, "png", title);
-            return "browser-save-ready";
+            return manual.prepare(blob, suggestedNameFor(width, height, "png", title), signal);
           },
-          saveOutput() {
-            if (blobUrl && saveName) saveBlobViaAnchor(document, blobUrl, saveName);
-          },
+          saveOutput: manual.saveOutput,
           transport: () => fetcher.getActiveTransport(),
-          dispose() {
-            if (blobUrl) URL.revokeObjectURL(blobUrl);
-          },
+          dispose: manual.dispose,
         };
       },
     })

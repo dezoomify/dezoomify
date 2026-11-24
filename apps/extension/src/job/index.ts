@@ -1,10 +1,10 @@
 import {
   createAttemptPermissions,
+  createManualSave,
   DezoomifyError,
   InternalError,
   loadTileImage,
   originOfUrl,
-  outputError,
   PolicyDeniedError,
 } from "@dezoomify/browser-runtime";
 import { createBrowserApplication } from "@dezoomify/browser-runtime/application";
@@ -15,10 +15,10 @@ import {
   setLocale,
   suggestedNameFor,
 } from "@dezoomify/shared-ui";
-import type { OutputDisposition, ResourceRead } from "@dezoomify/wasm-bindings";
+import type { ResourceRead } from "@dezoomify/wasm-bindings";
 import { browser as api } from "wxt/browser";
 import { createExtensionFetcher } from "../runtime/fetch.ts";
-import { createManualDownload, saveExtensionBlob, saveExtensionUrl } from "./download.ts";
+import { saveExtensionBlob, saveExtensionUrl } from "./download.ts";
 import { createSourceAccess } from "./source-access.ts";
 import { createResourceFetcher } from "./transport.ts";
 
@@ -100,24 +100,9 @@ const app = createBrowserApplication({
       hasPermission: (origin) => permissionApi.contains({ origins: [`${origin}/*`] }),
     });
     let downloadId: number | undefined;
-    const manual = createManualDownload(document);
+    const manual = createManualSave(document);
     let fetchResource: ReturnType<typeof createResourceFetcher> | undefined;
     let observe: ReturnType<ReturnType<typeof createSourceAccess>["observations"]> | undefined;
-
-    async function prepareOriginal(url: string) {
-      const { signal } = context;
-      if (url.startsWith("data:")) {
-        const blob = await (await fetch(url, { signal })).blob();
-        return manual.prepare(blob, "", signal);
-      }
-      // Cross-origin download links can navigate rather than save. Read the
-      // bytes through the normal session and permission checks instead.
-      const result = await fetchResource?.({ uri: url, purpose: "tile" }, signal, "allowed", true);
-      if (result?.kind !== "response")
-        throw outputError("write-failed", "could not read the original image");
-      const blob = new Blob([new Uint8Array(result.response.bytes)]);
-      return manual.prepare(blob, new URL(url).pathname.split("/").pop() || "image", signal);
-    }
 
     return {
       async inputs() {
@@ -212,22 +197,22 @@ const app = createBrowserApplication({
         return fetchResource.preview(request, signal);
       },
       async recoverDiscovery(error) {
-        if (!["discovery-failed", "malformed-metadata", "no-image-found"].includes(error.kind))
+        if (
+          !downloads ||
+          !["discovery-failed", "malformed-metadata", "no-image-found"].includes(error.kind)
+        )
           return undefined;
         const image = await source?.loadedImage(context.signal);
         const url = image?.url ?? (await source?.imageDownloadLink(context.signal));
         if (!url) return undefined;
         context.diagnostics.record("warn", "discovery-fallback", error);
         context.diagnostics.record("info", "source-image", { url, ...image });
-        let disposition: OutputDisposition = "browser-save-initiated";
-        if (downloads) {
-          downloadId = await saveExtensionUrl(downloads, url, undefined, context.signal);
-          context.view.outputKey = String(downloadId);
-        } else disposition = await prepareOriginal(url);
+        downloadId = await saveExtensionUrl(downloads, url, undefined, context.signal);
+        context.view.outputKey = String(downloadId);
         context.view.discoveryFallback = error;
         return {
           canvas: image ? { width: image.width, height: image.height } : undefined,
-          disposition,
+          disposition: "browser-save-initiated",
         };
       },
       observe: (interaction, signal) => observe?.(interaction, signal) ?? Promise.resolve([]),
@@ -267,7 +252,7 @@ const app = createBrowserApplication({
               if (downloadId !== undefined) await downloads.show(downloadId);
             },
           }
-        : { saveOutput: manual.save }),
+        : { saveOutput: manual.saveOutput }),
       transport: () => "browser-session",
     };
   },
