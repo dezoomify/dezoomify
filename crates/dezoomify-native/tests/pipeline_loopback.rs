@@ -659,7 +659,8 @@ fn iiif_size_rounding_bug_falls_back_to_caret_width_without_refetching() {
             ),
         );
         map.insert(
-            "/iiif/0,0,256,256/^256,/0/default.png".to_string(),
+            // The raw fixture matches the URL-encoded request path.
+            "/iiif/0,0,256,256/%5E256,/0/default.png".to_string(),
             http_response("200 OK", "image/png", &solid_png(256, 256, [90, 120, 150])),
         );
     }
