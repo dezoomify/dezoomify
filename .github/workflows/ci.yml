@@ -67,6 +67,18 @@ jobs:
           key: ${{ (matrix.lane-group == 'browser+web' || matrix.lane-group == 'extension') && 'web' || matrix.lane-group }}
       - if: matrix.lane-group != 'rust'
         uses: ./.github/actions/setup-wasm-bindgen
+      - name: Build Firefox package for manual testing
+        if: matrix.lane-group == 'extension' && github.event_name == 'pull_request'
+        run: |
+          cargo xtask build extension
+          unzip -tq target/extension/dezoomify-firefox.zip
+      - name: Upload Firefox package
+        if: matrix.lane-group == 'extension' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: target/extension/dezoomify-firefox.zip
+          archive: false
+          if-no-files-found: error
       - name: Install cargo-deny 0.20.2
         if: matrix.lane-group == 'check'
         uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
